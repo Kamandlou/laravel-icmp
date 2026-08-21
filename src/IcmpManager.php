@@ -19,6 +19,15 @@ class IcmpManager
         return $this->driver()->ping($host, $count, $timeout);
     }
 
+    /**
+     * @param list<string> $hosts
+     * @return list<PingResult>
+     */
+    public function pingMany(array $hosts, ?int $count = null, ?float $timeout = null, ?int $concurrency = null): array
+    {
+        return $this->driver()->pingMany($hosts, $count, $timeout, $concurrency);
+    }
+
     public function driver(?string $name = null): Probe
     {
         return match ($name ?? $this->config['driver']) {

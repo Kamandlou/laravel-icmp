@@ -57,6 +57,21 @@ final class RawSocketProbe implements Probe
         return new PingResult($host, $ip, $count, $received, 100 * ($count - $received) / $count, $times ? min($times) : null, $avg, $times ? max($times) : null, null, $replies, $received ? null : 'No ICMP echo replies received.');
     }
 
+    /**
+     * Raw sockets share one receive queue, so probes are deliberately run in order.
+     * @param list<string> $hosts
+     * @return list<PingResult>
+     */
+    public function pingMany(array $hosts, ?int $count = null, ?float $timeout = null, ?int $concurrency = null): array
+    {
+        $concurrency = $concurrency ?? (int) ($this->config['concurrency'] ?? 5);
+        if ($concurrency < 1 || $concurrency > 100) {
+            throw new IcmpException('Concurrency must be between 1 and 100.');
+        }
+
+        return array_map(fn (string $host) => $this->ping($host, $count, $timeout), $hosts);
+    }
+
     private function checksum(string $data): int
     {
         $sum = 0; foreach (unpack('n*', str_pad($data, strlen($data) + (strlen($data) % 2), "\0")) as $word) $sum += $word;

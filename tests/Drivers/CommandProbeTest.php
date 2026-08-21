@@ -88,6 +88,12 @@ OUTPUT, 2);
         $this->probe->ping('example.com', 1, 31.0);
     }
 
+    public function test_it_rejects_an_invalid_batch_concurrency(): void
+    {
+        $this->expectException(IcmpException::class);
+        $this->probe->pingMany(['example.com'], concurrency: 0);
+    }
+
     private function parse(string $output, int $requestedCount, int $exitCode = 0): \Kamandlou\LaravelIcmp\ValueObjects\PingResult
     {
         $method = new ReflectionMethod($this->probe, 'parse');

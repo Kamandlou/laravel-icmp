@@ -49,6 +49,23 @@ Arguments are optional. When omitted, the package uses the values in `config/icm
 $result = Icmp::ping('example.com');
 ```
 
+## Probing multiple hosts
+
+Use `pingMany()` to probe multiple hosts while limiting how many operating-system
+`ping` processes can run at the same time. Results retain the input order.
+
+```php
+$results = Icmp::pingMany([
+    '1.1.1.1',
+    '8.8.8.8',
+    'example.com',
+], count: 2, timeout: 1.0, concurrency: 3);
+```
+
+The command driver runs up to `concurrency` probes in parallel (default:
+`ICMP_CONCURRENCY`, which defaults to 5; allowed range: 1–100). The raw driver processes hosts in order because its
+shared socket receive queue cannot safely be multiplexed this way.
+
 ## Result format
 
 `ping()` returns an immutable `PingResult`. Its camel-case properties are convenient in PHP; `toArray()` produces snake-case data suitable for JSON responses and logs.
@@ -134,6 +151,9 @@ return [
 
     // Number of echo requests sent for each probe.
     'count' => (int) env('ICMP_COUNT', 4),
+
+    // Maximum parallel probes used by pingMany().
+    'concurrency' => (int) env('ICMP_CONCURRENCY', 5),
 
     // Upper limit accepted for a caller-provided timeout.
     'max_timeout' => 30.0,
