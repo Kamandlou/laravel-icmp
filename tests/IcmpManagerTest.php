@@ -29,4 +29,13 @@ class IcmpManagerTest extends TestCase
         $this->expectException(IcmpException::class);
         (new IcmpManager(['driver' => 'invalid']))->driver();
     }
+
+    public function test_it_delegates_multiple_hosts_to_the_selected_driver(): void
+    {
+        $manager = new IcmpManager(['driver' => 'command', 'count' => 1, 'timeout' => 1.0, 'max_timeout' => 30.0]);
+
+        $results = $manager->pingMany([], concurrency: 1);
+
+        $this->assertSame([], $results);
+    }
 }

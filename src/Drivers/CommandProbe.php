@@ -34,6 +34,79 @@ final class CommandProbe implements Probe
         return $this->parse($host, $count, trim($stdout."\n".$stderr), $exitCode);
     }
 
+    /**
+     * @param list<string> $hosts
+     * @return list<PingResult>
+     */
+    public function pingMany(array $hosts, ?int $count = null, ?float $timeout = null, ?int $concurrency = null): array
+    {
+        $count = $this->validateCount($count ?? $this->config['count']);
+        $timeout = $this->validateTimeout($timeout ?? $this->config['timeout']);
+        $concurrency = $this->validateConcurrency($concurrency ?? (int) ($this->config['concurrency'] ?? 5));
+        $hosts = array_map(fn (string $host) => $this->validateHost($host), $hosts);
+
+        $pending = array_values($hosts);
+        $running = [];
+        $results = [];
+
+        try {
+            while ($pending !== [] || $running !== []) {
+                while ($pending !== [] && count($running) < $concurrency) {
+                    $index = count($hosts) - count($pending);
+                    $host = array_shift($pending);
+                    $process = proc_open($this->command($host, $count, $timeout), [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+
+                    if (! is_resource($process)) {
+                        throw new IcmpException('Unable to start the ping command.');
+                    }
+
+                    stream_set_blocking($pipes[1], false);
+                    stream_set_blocking($pipes[2], false);
+                    $running[$index] = compact('host', 'process', 'pipes') + ['stdout' => '', 'stderr' => ''];
+                }
+
+                foreach ($running as $index => &$job) {
+                    $job['stdout'] .= stream_get_contents($job['pipes'][1]);
+                    $job['stderr'] .= stream_get_contents($job['pipes'][2]);
+                    $status = proc_get_status($job['process']);
+
+                    if ($status['running']) {
+                        continue;
+                    }
+
+                    $job['stdout'] .= stream_get_contents($job['pipes'][1]);
+                    $job['stderr'] .= stream_get_contents($job['pipes'][2]);
+                    fclose($job['pipes'][1]);
+                    fclose($job['pipes'][2]);
+                    $reportedExitCode = $status['exitcode'];
+                    $closedExitCode = proc_close($job['process']);
+                    $exitCode = $reportedExitCode >= 0 ? $reportedExitCode : $closedExitCode;
+                    $results[$index] = $this->parse($job['host'], $count, trim($job['stdout']."\n".$job['stderr']), $exitCode);
+                    unset($running[$index]);
+                }
+                unset($job);
+
+                if ($running !== []) {
+                    usleep(10_000);
+                }
+            }
+        } finally {
+            foreach ($running as $job) {
+                foreach ($job['pipes'] as $pipe) {
+                    if (is_resource($pipe)) {
+                        fclose($pipe);
+                    }
+                }
+                proc_terminate($job['process']);
+                proc_close($job['process']);
+            }
+        }
+
+        ksort($results);
+
+        return array_values($results);
+    }
+
     /** @return list<string> */
     private function command(string $host, int $count, float $timeout): array
     {
@@ -113,5 +186,14 @@ final class CommandProbe implements Probe
         $maximum = (float) ($this->config['max_timeout'] ?? 30);
         if ($timeout <= 0 || $timeout > $maximum) throw new IcmpException("Timeout must be between 0 and {$maximum} seconds.");
         return $timeout;
+    }
+
+    private function validateConcurrency(int $concurrency): int
+    {
+        if ($concurrency < 1 || $concurrency > 100) {
+            throw new IcmpException('Concurrency must be between 1 and 100.');
+        }
+
+        return $concurrency;
     }
 }
